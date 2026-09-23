@@ -9,6 +9,18 @@ def window(addr='0x1'):
 def snapshot():return {'format':1,'saved_at':'now','session':'test','windows':[window()],'monitors':[MON],'active':'0x1','workspaces':[]}
 
 class Tests(unittest.TestCase):
+    def test_identity_prefers_unique_running_executable(self):
+        class App:
+            def __init__(self,id,executable):self.id=id;self.executable=executable
+            def get_id(self):return self.id
+            def get_executable(self):return self.executable
+            def get_startup_wm_class(self):return 'Hermes'
+        wrapper=App('hermes.desktop','/usr/bin/mise')
+        binary=App('hermes-desktop.desktop','/opt/Hermes')
+        with patch('session.process_executable',return_value='Hermes'):
+            result=session.identity({'pid':123,'initialClass':'Hermes'},[wrapper,binary])
+        self.assertEqual(result,{'kind':'desktop','id':'hermes-desktop.desktop'})
+
     def test_shutdown_does_not_erase(self):
         old=snapshot();guard=session.Stabilizer(old);empty=copy.deepcopy(old);empty['windows']=[]
         self.assertIsNone(guard.observe(empty,0));self.assertIsNone(guard.observe(empty,2));self.assertIsNone(guard.observe(empty,19))

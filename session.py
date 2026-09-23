@@ -65,23 +65,49 @@ def dispatch(method, **kwargs):
 def desktop_apps():
     import gi
     from gi.repository import Gio
-    return [a for a in Gio.AppInfo.get_all() if isinstance(a,Gio.DesktopAppInfo)]
+    apps=[a for a in Gio.AppInfo.get_all() if isinstance(a,Gio.DesktopAppInfo)]
+    # Gio.AppInfo.get_all() intentionally omits Hidden desktop entries. Some
+    # applications keep a real executable launcher hidden alongside a visible
+    # wrapper (for example, a mise task launcher). Include those entries so
+    # window identity can select the executable that actually owns the window.
+    known={a.get_id() for a in apps}
+    data_home=Path(os.environ.get('XDG_DATA_HOME',Path.home()/'.local/share'))
+    data_dirs=[data_home,*[Path(p) for p in os.environ.get('XDG_DATA_DIRS','/usr/local/share:/usr/share').split(':') if p]]
+    for directory in data_dirs:
+        applications=directory/'applications'
+        if not applications.is_dir():continue
+        for filename in applications.rglob('*.desktop'):
+            try:contents=filename.read_text(errors='replace')
+            except OSError:continue
+            if not re.search(r'^Hidden\s*=\s*true\s*$',contents,re.I|re.M):continue
+            try:app=Gio.DesktopAppInfo.new_from_filename(str(filename))
+            except (TypeError,ValueError):continue
+            if app and app.get_id() not in known:
+                apps.append(app);known.add(app.get_id())
+    return apps
 
 
 def identity(client,apps):
     cls=client.get('initialClass') or client.get('class','')
     if cls in TERMINALS:return {'kind':'terminal','program':TERMINALS[cls]}
+    # Prefer the desktop entry whose executable matches this window's actual
+    # process. A wrapper may advertise the same StartupWMClass as its hidden
+    # executable launcher, but fail when invoked outside its project directory.
+    exe=process_executable(client)
+    executable_matches=[a for a in apps if exe and Path(a.get_executable() or '').name==exe]
+    if len(executable_matches)==1:return {'kind':'desktop','id':executable_matches[0].get_id()}
     candidates=[]
     for app in apps:
         keys=[app.get_startup_wm_class(),app.get_id().removesuffix('.desktop')]
         if cls.casefold() in [s.casefold() for s in keys if s]:candidates.append(app)
     if len(candidates)==1:return {'kind':'desktop','id':candidates[0].get_id()}
     # Only an unambiguous desktop executable match; never replay /proc cmdlines.
-    try:exe=Path(f"/proc/{client['pid']}/exe").resolve().name
-    except (OSError,KeyError):exe=''
-    candidates=[a for a in apps if exe and Path(a.get_executable() or '').name==exe]
-    if len(candidates)==1:return {'kind':'desktop','id':candidates[0].get_id()}
     return {'kind':'unsupported','reason':'No unambiguous desktop launcher; reopen manually.'}
+
+
+def process_executable(client):
+    try:return Path(f"/proc/{client['pid']}/exe").resolve().name
+    except (OSError,KeyError):return ''
 
 
 def terminal_cwd(pid):
@@ -173,6 +199,8 @@ def shutdown_checkpoint():
             if missing:
                 data['windows']=list(current.values())+[old[address] for address in sorted(missing)]
                 data['windows'].sort(key=lambda w:(w['workspace']['name'],w['at'][0],w['at'][1],w['address']))
+                if not data.get('active') and previous.get('active') in old:
+                    data['active']=previous['active']
                 print(f'Preserved {len(missing)} window(s) already closed during shutdown',flush=True)
         return commit(data)
 
@@ -240,7 +268,8 @@ def launch(w):
     if descriptor['kind']=='terminal':command=terminal_command(w)
     elif descriptor['kind']=='desktop':
         from gi.repository import Gio
-        app=Gio.DesktopAppInfo.new(descriptor['id'])
+        app=next((a for a in desktop_apps() if a.get_id()==descriptor['id']),None)
+        if app is None:app=Gio.DesktopAppInfo.new(descriptor['id'])
         if not app:raise RuntimeError('Desktop launcher no longer installed: '+descriptor['id'])
         command=['/usr/bin/gio','launch',app.get_filename()]
     else:raise RuntimeError(descriptor.get('reason','Unsupported application'))

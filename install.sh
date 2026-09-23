@@ -20,7 +20,7 @@ Type=simple
 ExecStart=/usr/bin/python "%h/.config/omarchy/plugins/justin.session-restore/session.py" daemon
 Restart=on-failure
 RestartSec=5
-TimeoutStopSec=5
+TimeoutStopSec=30
 UMask=0077
 UNIT
 cat > "$HOME/.config/omarchy/hooks/post-boot.d/session-restore" <<'HOOK'

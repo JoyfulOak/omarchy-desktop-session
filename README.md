@@ -42,8 +42,11 @@ Snapshots contain window titles and folder names and are private user files (060
 Only restore your own trusted snapshots; they name desktop applications to launch.
 The service polls every two seconds. Stable additions/layout edits are saved after
 three seconds, while removals settle for twenty seconds so Omarchy's shutdown
-window-close sequence cannot erase the previous desktop. The logind shutdown signal
-takes a final checkpoint before the desktop closes its windows. Abrupt power loss recovers the latest completed checkpoint,
+window-close sequence cannot erase the previous desktop. At shutdown, windows that
+have already disappeared during teardown are carried forward from the last checkpoint.
+The logind shutdown signal and service stop both take a final checkpoint before the
+desktop closes its windows. Startup launches missing apps together, then places them
+as their windows appear. Abrupt power loss recovers the latest completed checkpoint,
 not necessarily the last few seconds. **Save now** captures immediately.
 
 On partial restore, autosaving pauses so a failed reopen cannot replace the source

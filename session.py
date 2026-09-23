@@ -163,12 +163,17 @@ def checkpoint():
 
 
 def shutdown_checkpoint():
-    """Save shutdown state without replacing a useful session with teardown emptiness."""
+    """Save shutdown state while retaining windows already lost to teardown."""
     with lock():
         data=capture(); previous=read(STATE/'latest.json')
-        if not data.get('windows') and previous and previous.get('windows'):
-            print('Skipped empty shutdown checkpoint; preserved previous session',flush=True)
-            return previous
+        if previous and previous.get('windows'):
+            current={w['address']:w for w in data.get('windows',[])}
+            old={w['address']:w for w in previous['windows']}
+            missing=old.keys()-current.keys()
+            if missing:
+                data['windows']=list(current.values())+[old[address] for address in sorted(missing)]
+                data['windows'].sort(key=lambda w:(w['workspace']['name'],w['at'][0],w['at'][1],w['address']))
+                print(f'Preserved {len(missing)} window(s) already closed during shutdown',flush=True)
         return commit(data)
 
 
@@ -265,30 +270,44 @@ def restore(path=None):
         # every login instead of carrying that stale pause into a new session.
         (RUNTIME/'pause.json').unlink(missing_ok=True)
         atomic(STATE/'before-restore.json',capture())
-        cfg=config(); errors=[]; used=set(); restored={}; count=0
+        cfg=config(); errors=[]; used=set(); restored={}; count=0; pending=[]
         restore_key=hashlib.sha256((os.environ.get('HYPRLAND_INSTANCE_SIGNATURE','')+json.dumps(snapshot,sort_keys=True)).encode()).hexdigest()
         mapping_path=RUNTIME/('restored-'+restore_key+'.json'); mapping=read(mapping_path,{})
         same_session=snapshot['session']==os.environ.get('HYPRLAND_INSTANCE_SIGNATURE')
+        clients=hypr('clients')
         for w in snapshot['windows']:
             if (w.get('initialClass') or w['class']) in cfg['excluded_classes']:continue
             try:
-                clients=hypr('clients'); previous=mapping.get(w['address'])
+                previous=mapping.get(w['address'])
                 live=next((c for c in clients if previous and c['address']==previous['address'] and c['pid']==previous['pid'] and c['address'] not in used),None)
                 if not live:live=match(w,clients,used,same_session)
                 if not live:
-                    before={c['address'] for c in clients}
                     launch(w)
-                    deadline=time.monotonic()+18
-                    while time.monotonic()<deadline:
-                        live=match(w,hypr('clients'),used|before)
-                        if live:break
-                        time.sleep(.25)
-                    if not live:raise RuntimeError('No new window appeared (the app may be single-instance or use a different window class).')
+                    pending.append((w,{c['address'] for c in clients},time.monotonic()+18))
+                    continue
                 used.add(live['address']); restored[w['address']]=live['address']
                 mapping[w['address']]={'address':live['address'],'pid':live['pid']}
                 atomic(mapping_path,mapping)
                 place(w,live,snapshot,cfg); count+=1
             except Exception as error:errors.append((w.get('class') or 'window')+': '+str(error))
+        # Start all missing applications before waiting for any one of them.
+        # This prevents a slow first app from delaying every later workspace.
+        while pending:
+            clients=hypr('clients'); remaining=[]
+            for w,before,deadline in pending:
+                try:
+                    live=match(w,clients,used|before)
+                    if live:
+                        used.add(live['address']); restored[w['address']]=live['address']
+                        mapping[w['address']]={'address':live['address'],'pid':live['pid']}
+                        atomic(mapping_path,mapping)
+                        place(w,live,snapshot,cfg); count+=1
+                    elif time.monotonic()>=deadline:
+                        errors.append((w.get('class') or 'window')+': No new window appeared (the app may be single-instance or use a different window class).')
+                    else:remaining.append((w,before,deadline))
+                except Exception as error:errors.append((w.get('class') or 'window')+': '+str(error))
+            pending=remaining
+            if pending:time.sleep(.2)
         # Restore each monitor's visible workspace, then the saved focused window.
         connected={m['name'] for m in hypr('monitors')}
         for m in snapshot['monitors']:
@@ -356,7 +375,6 @@ def daemon():
     if not marker.exists():
         atomic(marker,{'started':time.time()})
         if config()['auto_restore'] and (STATE/'latest.json').exists():
-            time.sleep(5)
             result=restore()
             subprocess.run(['notify-send','Desktop Session',f"Restored {result['restored']} of {result['total']} windows."+(' Open Desktop Session to review issues.' if result['errors'] else '')],check=False)
     apps=desktop_apps(); guard=Stabilizer(read(STATE/'latest.json')); refreshed=time.monotonic()

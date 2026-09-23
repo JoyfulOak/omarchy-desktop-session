@@ -2,11 +2,21 @@
   "schemaVersion": 1,
   "id": "justin.session-restore",
   "name": "Desktop Session",
-  "version": "2026.09.1",
+  "version": "2026.09.2",
   "author": "Justin",
   "license": "MIT",
   "description": "Automatically save and restore open apps, workspaces and window placement between desktop sessions.",
-  "kinds": ["bar-widget"],
-  "entryPoints": {"barWidget": "BarWidget.qml"},
-  "barWidget": {"displayName": "Desktop Session", "description": "Save, restore and configure your desktop session.", "category": "System", "allowMultiple": false, "defaultSection": "right"}
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Desktop Session",
+    "description": "Save, restore and configure your desktop session.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
 }

@@ -52,14 +52,42 @@ saving**. A manual restore first reuses matching existing windows; it never clos
 unrelated windows. Applications with indistinguishable titles/classes after reboot
 may have their window order swapped.
 
-## Installation and files
+## Install
 
-Run `bash install.sh` inside an active Omarchy desktop. This installs a user systemd
-service, a post-boot hook and the bar plugin. No system packages or
-packaged Omarchy files are modified. Post-boot starts the service after Omarchy
-imports its graphical session environment. The service stops with the graphical
-session and does not save an empty desktop on exit. Installing/restarting it in the
-same desktop session does not trigger another automatic restore.
+On an active Omarchy desktop, install directly from GitHub:
+
+```bash
+omarchy plugin add https://github.com/JoyfulOak/omarchy-desktop-session.git --enable --yes
+```
+
+The installer sets up the user systemd service, post-boot hook, CLI, preferences,
+and bar widget. No system packages or packaged Omarchy files are modified.
+Post-boot starts the service after Omarchy imports its graphical session
+environment. The service stops with the graphical session and does not save an
+empty desktop on exit. Installing/restarting it in the same desktop session does
+not trigger another automatic restore.
+
+To install from a local clone instead:
+
+```bash
+bash install.sh
+```
+
+## Update
+
+```bash
+omarchy plugin update justin.session-restore
+```
+
+## Remove automatic startup
+
+```bash
+bash uninstall.sh
+```
+
+This stops and removes automatic startup while retaining saved sessions and source.
+
+## Installed files
 
 - Plugin: `~/.config/omarchy/plugins/justin.session-restore/`
 - Preferences: `~/.config/omarchy/session-restore.json`

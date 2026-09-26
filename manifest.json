@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "justin.session-restore",
   "name": "Desktop Session",
-  "version": "2026.09.2",
+  "version": "2026.09.3",
   "author": "Justin",
   "license": "MIT",
   "description": "Automatically save and restore open apps, workspaces and window placement between desktop sessions.",

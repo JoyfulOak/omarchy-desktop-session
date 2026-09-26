@@ -1,7 +1,7 @@
 #!/usr/bin/python
 """User-owned Omarchy session checkpoint/restore, for Hyprland's Lua API."""
 import argparse, contextlib, fcntl, hashlib, json, os, re, shutil, signal
-import subprocess, sys, tempfile, time
+import subprocess, sys, tempfile, time, shlex
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -94,7 +94,22 @@ def identity(client,apps):
     # process. A wrapper may advertise the same StartupWMClass as its hidden
     # executable launcher, but fail when invoked outside its project directory.
     exe=process_executable(client)
-    executable_matches=[a for a in apps if exe and Path(a.get_executable() or '').name==exe]
+    # AppImage launchers often share StartupWMClass (including stable/nightly
+    # builds), and Gio's executable may be an `env ... AppImage ...` command.
+    # Use the running process's argv only as identity evidence; never replay it.
+    argv=process_arguments(client)
+    executable_matches=[]
+    for app in apps:
+        try: launcher=app.get_executable() or ''
+        except (AttributeError,TypeError): launcher=''
+        try: tokens=shlex.split(launcher)
+        except ValueError: tokens=[]
+        paths=[token for token in tokens if token.startswith('/')]
+        launcher_names={Path(path).name for path in paths}
+        launcher_names.update(Path(token).name for token in tokens if token and not token.startswith('-') and '=' not in token)
+        argv_names={Path(arg).name for arg in argv if arg and not arg.startswith('-')}
+        if (exe and Path(launcher).name==exe) or bool(launcher_names & argv_names):
+            executable_matches.append(app)
     if len(executable_matches)==1:return {'kind':'desktop','id':executable_matches[0].get_id()}
     candidates=[]
     for app in apps:
@@ -108,6 +123,13 @@ def identity(client,apps):
 def process_executable(client):
     try:return Path(f"/proc/{client['pid']}/exe").resolve().name
     except (OSError,KeyError):return ''
+
+
+def process_arguments(client):
+    """Read argv for launcher identification only; never execute captured args."""
+    try:
+        return [part.decode(errors='replace') for part in Path(f"/proc/{client['pid']}/cmdline").read_bytes().split(bytes([0])) if part]
+    except (OSError,KeyError):return []
 
 
 def terminal_cwd(pid):

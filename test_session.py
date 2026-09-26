@@ -9,6 +9,28 @@ def window(addr='0x1'):
 def snapshot():return {'format':1,'saved_at':'now','session':'test','windows':[window()],'monitors':[MON],'active':'0x1','workspaces':[]}
 
 class Tests(unittest.TestCase):
+    def test_identity_disambiguates_shared_wmclass_by_appimage_argv(self):
+        class App:
+            def __init__(self,id,executable):self.id=id;self.executable=executable
+            def get_id(self):return self.id
+            def get_executable(self):return self.executable
+            def get_startup_wm_class(self):return 'OrcaSlicer'
+        stable=App('orcaslicer.desktop','env LIBGL_ALWAYS_SOFTWARE=1 /home/justin/Applications/OrcaSlicer.AppImage --appimage-extract-and-run')
+        nightly=App('orcaslicer-nightly.desktop','env LIBGL_ALWAYS_SOFTWARE=1 /home/justin/Applications/OrcaSlicer-nightly.AppImage --appimage-extract-and-run')
+        client={'pid':123,'initialClass':'OrcaSlicer'}
+        with patch('session.process_executable',return_value='OrcaSlicer'), patch('session.process_arguments',return_value=['/home/justin/Applications/OrcaSlicer-nightly.AppImage','--appimage-extract-and-run']):
+            self.assertEqual(session.identity(client,[stable,nightly]),{'kind':'desktop','id':'orcaslicer-nightly.desktop'})
+
+    def test_identity_keeps_unmatched_duplicate_wmclass_unsupported(self):
+        class App:
+            def __init__(self,id):self.id=id
+            def get_id(self):return self.id
+            def get_executable(self):return '/usr/bin/orcaslicer'
+            def get_startup_wm_class(self):return 'OrcaSlicer'
+        client={'pid':123,'initialClass':'OrcaSlicer'}
+        with patch('session.process_executable',return_value='OrcaSlicer'),patch('session.process_arguments',return_value=[]):
+            self.assertEqual(session.identity(client,[App('stable.desktop'),App('nightly.desktop')])['kind'],'unsupported')
+
     def test_identity_prefers_unique_running_executable(self):
         class App:
             def __init__(self,id,executable):self.id=id;self.executable=executable

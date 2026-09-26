@@ -11,7 +11,9 @@ before the desktop closes its windows.
 ## What returns
 
 - Open applications with an unambiguous installed desktop launcher; missing launchers
-  are reported instead of guessed. Terminal support: Foot, Alacritty, Kitty, Ghostty.
+  are reported instead of guessed. Launcher identity uses the running process's
+  executable/argv to distinguish apps that share a window class (for example stable
+  and nightly AppImage builds); captured argv is never replayed. Terminal support: Foot, Alacritty, Kitty, Ghostty.
 - Workspace names, monitor assignments (with fallback when disconnected), active
   workspace/focus, floating size and position, fullscreen and floating pinned state.
 - Terminal working directories, using the shell's current folder where available.

@@ -13,7 +13,10 @@ before the desktop closes its windows.
 - Open applications with an unambiguous installed desktop launcher; missing launchers
   are reported instead of guessed. Launcher identity uses the running process's
   executable/argv to distinguish apps that share a window class (for example stable
-  and nightly AppImage builds); captured argv is never replayed. Terminal support: Foot, Alacritty, Kitty, Ghostty.
+  and nightly AppImage builds), and matches reverse-DNS window classes to a unique
+  desktop `StartupWMClass` (for example `com.vendor.app` to `App`). Older snapshots
+  recorded before that matching was available are resolved again during restore.
+  Captured argv is never replayed. Terminal support: Foot, Alacritty, Kitty, Ghostty.
 - Workspace names, monitor assignments (with fallback when disconnected), active
   workspace/focus, floating size and position, fullscreen and floating pinned state.
 - Terminal working directories, using the shell's current folder where available.

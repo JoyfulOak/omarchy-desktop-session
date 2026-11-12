@@ -111,11 +111,32 @@ def identity(client,apps):
         if (exe and Path(launcher).name==exe) or bool(launcher_names & argv_names):
             executable_matches.append(app)
     if len(executable_matches)==1:return {'kind':'desktop','id':executable_matches[0].get_id()}
-    candidates=[]
+    return desktop_identity(cls,apps)
+
+
+def desktop_identity(cls,apps):
+    """Resolve a window class to one installed desktop launcher.
+
+    Electron and other toolkit apps often expose reverse-DNS window classes
+    while their desktop entry uses StartupWMClass with only the app name.
+    Accept that final component only when it identifies one launcher.
+    """
+    keys_by_app=[]
     for app in apps:
-        keys=[app.get_startup_wm_class(),app.get_id().removesuffix('.desktop')]
-        if cls.casefold() in [s.casefold() for s in keys if s]:candidates.append(app)
-    if len(candidates)==1:return {'kind':'desktop','id':candidates[0].get_id()}
+        try:startup=app.get_startup_wm_class() or ''
+        except (AttributeError,TypeError):startup=''
+        try:app_id=app.get_id() or ''
+        except (AttributeError,TypeError):app_id=''
+        keys={key.casefold() for key in (startup,app_id.removesuffix('.desktop')) if key}
+        keys_by_app.append((app,keys))
+    folded=cls.casefold()
+    exact=[app for app,keys in keys_by_app if folded in keys]
+    if len(exact)==1:return {'kind':'desktop','id':exact[0].get_id()}
+    # Some Chromium/Electron apps report a reverse-DNS class such as
+    # com.vendor.product, but publish StartupWMClass=Product.
+    tail=folded.rsplit('.',1)[-1]
+    suffix=[app for app,keys in keys_by_app if tail in keys]
+    if len(suffix)==1:return {'kind':'desktop','id':suffix[0].get_id()}
     # Only an unambiguous desktop executable match; never replay /proc cmdlines.
     return {'kind':'unsupported','reason':'No unambiguous desktop launcher; reopen manually.'}
 
@@ -287,6 +308,11 @@ def terminal_command(w):
 
 def launch(w):
     descriptor=w['launch']
+    # Older snapshots may have recorded a class as unsupported before
+    # reverse-DNS window-class matching was available. Resolve it again using
+    # the currently installed launchers, without trusting/replaying old argv.
+    if descriptor.get('kind')=='unsupported':
+        descriptor=desktop_identity(w.get('initialClass') or w.get('class',''),desktop_apps())
     if descriptor['kind']=='terminal':command=terminal_command(w)
     elif descriptor['kind']=='desktop':
         from gi.repository import Gio
